@@ -2,10 +2,6 @@ package com.natalinobusa.examples
 
 // scala
 
-import com.natalinobusa.examples
-import org.json4s.JValue
-import org.json4s.JsonAST.JValue
-
 import scala.concurrent.Future
 import scala.concurrent.duration._
 
@@ -60,13 +56,6 @@ trait CoralActor extends Actor with ActorLogging {
     optionT(value)
   }
 
-  //Transform actor properties
-  // emit yes/no
-  // pause yes/no
-  // id (reuse akka unique path?)
-
-  // end: implicits and general actor init
-
   // todo: ideas
   // can you fold this with become/unbecome and translate into a tell pattern rather the an ask pattern?
 
@@ -98,35 +87,7 @@ trait CoralActor extends Actor with ActorLogging {
   // everything is json
   // everything is described via json schema
 
-//  def stateJsonSchema:String
-//  def stateJson:PartialFunction[String, Unit]
-//  val noSchema =  wildcard
-
-//  val stateJsonSchemaHeader = render(Map("title" -> "state json schema", "type" -> "object") )
-//  val stateJsonSchemaBody   = parse(s"""{"properties":{ $stateJsonSchema } }""")
-//  val stateJsonSchemaFull   = stateJsonSchemaHeader merge stateJsonSchemaBody
-//
-//  val wildcard: PartialFunction[String, Unit] = { case _ => sender ! JNothing }
-//  def getFieldJson = stateJson orElse wildcard
-
   def stateModel:Receive
-//  {
-//    // list state
-//    case ListFields =>
-//      sender ! stateJsonSchemaFull
-//
-//    // access state
-//    case GetField(field:String) =>
-//      getFieldJson(field)
-//
-//  }
-//  var v1 = 2.4
-//  var v2 = 10L
-//
-//  def testModel:Receive = expose (
-//    ("aa", "bbb", v1+3),
-//    ("xx", "zz", v2)
-//  )
 
   val emptyJsonSchema = parse("""{"title":"json schema", "type":"object"}""")
   def noModelExposed:Receive = {
@@ -144,25 +105,11 @@ class HistogramActor extends CoralActor {
 
   // user defined state
   // todo: the given state should be persisted
+
   var count    = 0L
   var avg      = 0.0
   var sd       = 0.0
   var `var`    = 0.0
-
-//  val stateJsonSchema =
-//    """
-//      |   "count"   :  {"type":"integer"},
-//      |   "average" :  {"type":"number" },
-//      |   "sd"      :  {"type":"number" },
-//      |   "var"     :  {"type":"number" }
-//    """.stripMargin
-//
-//  def stateJson = {
-//    case "count" =>  sender ! render("count" -> count)
-//    case "avg"   =>  sender ! render("avg"   -> avg)
-//    case "sd"    =>  sender ! render("sd"    -> {Math.sqrt(`var`)} )
-//    case "var"   =>  sender ! render("var"   -> `var`)
-//  }
 
   def stateModel = expose(
     ("count", "integer", count),
@@ -173,7 +120,6 @@ class HistogramActor extends CoralActor {
 
   // private variables not exposed
   var avg_1    = 0.0
-
 
   def process = {
     json: JObject =>
@@ -227,9 +173,6 @@ class EventsActor extends Actor with ActorLogging {
   }
 }
 
-// example of a group_by actor:
-// it creates sub actors according to a given key field
-
 class GroupByActor[T <: Actor](by: String)(implicit m: ClassTag[T]) extends Actor with ActorLogging {
   def actorRefFactory = context
 
@@ -264,7 +207,7 @@ class CheckActor extends CoralActor {
 
   var outlier: Boolean = _
 
-  def stateModel = expose( ("outlier", """ {"type":"integer"} """, outlier) )
+  def stateModel = expose( ("outlier", "integer", outlier) )
 
   def process = {
     json: JObject =>
@@ -283,9 +226,6 @@ class CheckActor extends CoralActor {
         outlier = amount > th
       }
   }
-
-//  val emitJsonSchema = ""
-//  def emitJson = noSchema
 
   def emit =
   {

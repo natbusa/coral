@@ -2,6 +2,7 @@
 *.log
 
 #dot files
+.history
 .cache
 .classpath
 .project
