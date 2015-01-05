@@ -162,7 +162,7 @@ class EventsActor extends Actor with ActorLogging {
 
   // create and start our transform root actor
   val histogramGroupActorRef = actorRefFactory.actorOf(GroupByActor[HistogramActor]("city"), "histogram")
-  val checkActorRef = actorRefFactory.actorOf(Props[CheckActor], "transforms")
+  val checkActorRef = actorRefFactory.actorOf(ZscoreActor("/user/events/histogram", "city", "amount", 2.0), "transforms")
 
   // essentially it runs a list of actors and tell them about the incoming event
   def receive = {
@@ -202,8 +202,12 @@ object GroupByActor {
   def apply[T <: Actor](by: String)(implicit m: ClassTag[T]): Props = Props(new GroupByActor[T](by))
 }
 
+object ZscoreActor {
+  def apply(ac: String, by:String, field: String, score:Double): Props = Props(new ZscoreActor(ac,by,field, score))
+}
+
 // metrics actor example
-class CheckActor extends CoralActor {
+class ZscoreActor(ac: String, by:String, field: String, score:Double) extends CoralActor {
 
   var outlier: Boolean = _
 
@@ -213,17 +217,19 @@ class CheckActor extends CoralActor {
     json: JObject =>
       for {
         // from trigger data
-        city <- getInputField[String](json \ "city")
-        amount <- getInputField[Double](json \ "amount")
-        account <- getInputField[String](json \ "account")
+        byValue <- getInputField[String](json \ by)
+        value <- getInputField[Double](json \ field)
 
         // from other actors
-        avg <- getActorField[Double](s"/user/events/histogram/$city", "avg")
-        std <- getActorField[Double](s"/user/events/histogram/$city", "sd")
+        avg <- getActorField[Double](s"$ac/$byValue", "avg")
+        std <- getActorField[Double](s"$ac/$byValue", "sd")
+
+        //alternative syntax from other actors multiple fields
+        //(avg,std) <- getActorField[Double](s"/user/events/histogram/$city", List("avg", "sd"))
       } yield {
         // compute (local variables & update state)
-        val th = avg + 2.0 * std
-        outlier = amount > th
+        val th = avg + score * std
+        outlier = value > th
       }
   }
 
