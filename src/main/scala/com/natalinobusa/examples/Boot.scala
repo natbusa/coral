@@ -13,6 +13,9 @@ object Boot extends App {
   // create and start our transform root actor
   val eventsActorRef = system.actorOf(Props[EventsActor], "events")
 
+  // create the coral actor
+  val coral = system.actorOf(Props[CoralActor], "coral")
+
   // create and start our service actor
   val service = system.actorOf(Props[ApiServiceActor], "api")
 
