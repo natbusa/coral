@@ -10,9 +10,6 @@ import spray.can.Http
 object Boot extends App {
   implicit val system = ActorSystem()
 
-  // create and start our transform root actor
-  val eventsActorRef = system.actorOf(Props[EventsActor], "events")
-
   // create the coral actor
   val coral = system.actorOf(Props[CoralActor], "coral")
 

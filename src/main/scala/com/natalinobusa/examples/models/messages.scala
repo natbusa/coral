@@ -18,12 +18,12 @@ object Messages {
   case class  GetField(field:String)
   case object ListFields
   case class  RegisterActor(r: ActorRef)
+  case class  UpdateProperties(json:JObject)
+  case object GetProperties
 
   // create beads
   case class  CreateActor(json:JObject)
-  case class  CreateBond(json:JObject)
   case object ListActors
-  case object ListBonds
 
   //Actors: internal routing and selection
   case class GetActorPath(id:Long)

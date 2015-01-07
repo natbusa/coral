@@ -2,7 +2,7 @@ package com.natalinobusa.examples
 
 // scala
 
-import scala.collection.immutable.{SortedSet, SortedMap}
+import scala.collection.immutable.{HashMap, SortedSet, SortedMap}
 import scala.concurrent.Future
 import scala.concurrent.duration._
 
@@ -64,30 +64,8 @@ class CoralActor extends Actor with ActorLogging {
 
       sender ! actorId
 
-    case CreateBond(json) =>
-
-      implicit val formats = org.json4s.DefaultFormats
-      for {
-      // from trigger data
-        p <- (json \ "producer").extractOpt[Long]
-        c <- (json \ "consumer").extractOpt[Long]
-        prodRef <- actorRefFactory.child(p.toString)
-        consRef <- actorRefFactory.child(c.toString)
-      } yield {
-        // todo: check if the actors actually exist
-        bonds += (c -> p)
-
-        // get the path of the producer and register the consumer
-        prodRef ! RegisterActor(consRef)
-      }
-
-      sender ! true
-
     case ListActors =>
           sender ! actors.keys.toList
-
-    case ListBonds =>
-      sender ! bonds.keys.zip(bonds.values).toList
     //
     //    case Delete(id) =>
     //      directory.get(id).map(e => actorRefFactory.actorSelection(e._1) ! PoisonPill)
@@ -114,12 +92,15 @@ trait BeadActor extends Actor with ActorLogging {
 
   // transmit actor list
   var recipients = SortedSet.empty[ActorRef]
+  var trigger: Option[String] = None           // numeric id  or None or "external"
+  var collect = HashMap.empty[String, String]  // zero or more alias to id
 
   implicit def executionContext = actorRefFactory.dispatcher
 
   implicit val timeout = Timeout(10.milliseconds)
 
-  def askActor(a: String, msg: Any) = actorRefFactory.actorSelection(a).ask(msg)
+  def  askActor(a: String, msg: Any) = actorRefFactory.actorSelection(a).ask(msg)
+  def tellActor(a: String, msg: Any) = actorRefFactory.actorSelection(a).!(msg)
 
   implicit val formats = org.json4s.DefaultFormats
 
@@ -128,6 +109,8 @@ trait BeadActor extends Actor with ActorLogging {
 
     def bind[A, B](fa: Future[A])(f: A => Future[B]): Future[B] = fa flatMap f
   }
+
+  // update properties (for now just fix trigger and collect lists)
 
   // Future[Option[A]] to Option[Future, A] using the OptionT monad transformer
   def getActorField[A](actorPath: String, field: String)(implicit mf: Manifest[A]) = {
@@ -155,6 +138,7 @@ trait BeadActor extends Actor with ActorLogging {
 
   def transmitAdmin: Receive = {
     case RegisterActor(r) =>
+      log.warning(s"registering ${r.path.toString}")
       recipients += r
   }
 
@@ -165,6 +149,28 @@ trait BeadActor extends Actor with ActorLogging {
          recipients map (actorRef => actorRef ! v)
        case _ =>
      }
+  }
+
+  def propertiesHandling: Receive = {
+    case UpdateProperties(json) =>
+      // update trigger
+      trigger = (json \ "input" \ "trigger" \ "in" \ "type").extractOpt[String]
+      trigger.getOrElse("none") match {
+        case "none"     =>
+        case "external" =>
+        case "actor"    =>
+          val source = (json \ "input" \ "trigger" \ "in" \ "source").extractOpt[String]
+          source map { v =>
+            log.warning(s"$v")
+            tellActor(s"/user/coral/$v", RegisterActor(self))
+          }
+
+        case _    =>
+      }
+      sender ! true
+
+    case GetProperties =>
+      sender ! JNothing
   }
 
   def jsonData: Receive = {
@@ -186,7 +192,7 @@ trait BeadActor extends Actor with ActorLogging {
 
   }
 
-  def receive = jsonData orElse transmitAdmin orElse stateModel
+  def receive = jsonData orElse transmitAdmin orElse propertiesHandling orElse stateModel
 
   // everything is json
   // everything is described via json schema
@@ -259,48 +265,25 @@ class HistogramActor extends BeadActor {
   def emit = doNotEmit
 }
 
+//todo: groupby actor should forward the bead methods to the children
+class GroupByActor[T <: Actor](by: String)(implicit m: ClassTag[T]) extends BeadActor with ActorLogging {
 
-// todo: the events actor becomes my actor dispatcher
-// this actor give an idea about how to spread events to other actors
-class EventsActor extends Actor with ActorLogging {
-  def actorRefFactory = context
+  def stateModel = expose()
+  def emit       = doNotEmit
 
-  // create and start our transform root actor
-  val histogramGroupActorRef = actorRefFactory.actorOf(GroupByActor[HistogramActor]("city"), "histogram")
-  val checkActorRef = actorRefFactory.actorOf(ZscoreActor("/user/events/histogram", "city", "amount", 2.0), "transforms")
-
-  // essentially it runs a list of actors and tell them about the incoming event
-  def receive = {
-    case json:JObject =>
-      log.debug(s"dispatching! $json")
-      histogramGroupActorRef ! json
-      checkActorRef ! json
-  }
-}
-
-//todo: actorgroup should forward the bead methods through the children
-class GroupByActor[T <: Actor](by: String)(implicit m: ClassTag[T]) extends Actor with ActorLogging {
-  def actorRefFactory = context
-
-  implicit def executionContext = actorRefFactory.dispatcher
-  implicit val timeout = Timeout(100.milliseconds)
-
-  implicit val formats = org.json4s.DefaultFormats
-
-  def receive = {
+  def process = {
     // todo: group_by support more than a level into dynamic actors tree
-    case json: JObject =>
+    json: JObject =>
       for {
-        value   <- (json \ by).extractOpt[String]
+        value   <- getInputField[String](json \ by)
       } yield {
         // create if it does not exist
         actorRefFactory.child(value) match
         {
-          case Some(actorRef) => actorRef ! json
-          case None           => actorRefFactory.actorOf(Props[T], value) ! json
-
+          case Some(actorRef) => actorRef
+          case None           => actorRefFactory.actorOf(Props[T], value)
         }
-      }
+      } ! json
   }
 }
 
@@ -323,12 +306,9 @@ object RestActor {
 
 // metrics actor example
 class RestActor extends BeadActor {
-
   def stateModel = expose()
-
-  def process = noProcess
-
-  def emit = passThroughEmit
+  def process    = noProcess
+  def emit       = passThroughEmit
 }
 
 object ZscoreActor {

@@ -39,7 +39,7 @@ class ApiServiceActor extends Actor with ApiService with ActorLogging {
 // we call the REST exposed api actor factory as coral, external name coral)
 // we call the REST exposed actors connections "connections", exposed as "connections"
 
-// declaraion time : /api/coral/flows/{flowid}/actors/{actorid}
+// declaration time : /api/coral/flows/{flowid}/actors/{actorid}
 
 trait ApiService extends HttpService {
 
@@ -55,28 +55,6 @@ trait ApiService extends HttpService {
 
   val serviceRoute = {
     pathPrefix("api") {
-      pathPrefix("bonds") {
-        pathEnd {
-          get {
-            import JsonConversions._
-            ctx => askActor(coralActor,ListBonds).mapTo[List[Long]]
-              .onSuccess { case actors => ctx.complete(actors)}
-          } ~
-            post {
-              import JsonConversions._
-              entity(as[JObject]) { json =>
-                ctx => askActor(coralActor,CreateBond(json)).mapTo[Boolean]
-                  .onSuccess {
-                  case true => ctx.complete(StatusCodes.Created, "ok")
-                  case _ => ctx.complete("not created")
-                }
-              }
-            } ~
-            (delete | head | patch) {
-              complete(HttpResponse(StatusCodes.MethodNotAllowed))
-            }
-        }
-      } ~
       pathPrefix("actors") {
         pathEnd {
           get {
@@ -106,16 +84,36 @@ trait ApiService extends HttpService {
           actorPath => validate(actorPath.isDefined, "") {
             provide(actorPath.orNull) {
               ap => {
-                pathPrefix("schema" ) {
+                pathEnd {
+                  put {
+                    import JsonConversions._
+                    entity(as[JObject]) { json =>
+                      ctx => askActor(ap, UpdateProperties(json)).mapTo[Boolean]
+                        .onSuccess {
+                        case true => ctx.complete(StatusCodes.Created, "ok")
+                        case _ => ctx.complete("not created")
+                      }
+                    }
+                  } ~
                   get {
                     import JsonConversions._
-                    val result = askActor(ap,ListFields).mapTo[JObject]
+                    val result = askActor(ap,GetProperties).mapTo[JObject]
                     onComplete(result) {
                       case Success(json) => complete(json)
                       case Failure(ex)   => complete(StatusCodes.InternalServerError, s"An error occurred: ${ex.getMessage}")
                     }
                   }
                 } ~
+                  pathPrefix("schema" ) {
+                    get {
+                      import JsonConversions._
+                      val result = askActor(ap,ListFields).mapTo[JObject]
+                      onComplete(result) {
+                        case Success(json) => complete(json)
+                        case Failure(ex)   => complete(StatusCodes.InternalServerError, s"An error occurred: ${ex.getMessage}")
+                      }
+                    }
+                  } ~
                   pathPrefix("state" / Segment ) {
                     field =>
                       get {
@@ -139,59 +137,12 @@ trait ApiService extends HttpService {
                       }
                     }
                   }
-              }
-            }
-          }
-        }
-      } ~
-      pathPrefix("in") {
-        post {
-          import JsonConversions._
-          entity(as[JObject]) { json =>
-            actorRefFactory.actorSelection("/user/events") ! json
-            complete(StatusCodes.Created, json)
-          }
-        }
-      } ~
-      pathPrefix("actors" / Segment / Segment) {
-        (name, city) =>
-          pathEnd {
-            get {
-              import JsonConversions._
-              val result = askActor(s"/user/events/$name/$city",ListFields).mapTo[JObject]
-              onComplete(result) {
-                case Success(json) => complete(json)
-                case Failure(ex) => complete(StatusCodes.InternalServerError, s"An error occurred: ${ex.getMessage}")
-
-              }
-            }
-          } ~
-          pathPrefix(Segment) {
-            field =>
-              get {
-                import JsonConversions._
-                val json = askActor(s"/user/events/$name/$city",GetField(field)).mapTo[JValue]
-                onComplete(json) {
-                  case Success(value) => complete(json)
-                  case Failure(ex)    => complete(StatusCodes.InternalServerError, s"An error occurred: ${ex.getMessage}")
-
                 }
               }
-          }
-      } ~
-      pathPrefix("transform" / Segment ) {
-        field =>
-          get {
-            import JsonConversions._
-            val result = askActor(s"/user/events/transforms",GetField(field)).mapTo[Option[Boolean]]
-            onComplete(result) {
-              case Success(Some(value)) => complete(s"Result: $value")
-              case Success(None) => complete(s"Result: variable not available")
-              case Failure(ex) => complete(StatusCodes.InternalServerError, s"An error occurred: ${ex.getMessage}")
             }
           }
+        }
       }
     }
-  }
 }
 

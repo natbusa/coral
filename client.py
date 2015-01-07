@@ -39,12 +39,12 @@ def randEvent() :
   event = {'account':'NL'+str(account), 'amount':amount, 'city':city }
   return event
 
-#for i in range(1):
-while(1):
+for i in range(1):
+#while(1):
   for i in range(10):
     post('/api/actors/1/in',randEvent() )
     time.sleep(0.01)
 
-#get('/api/actors/histogram/Amsterdam')
-#get('/api/actors/histogram/Amsterdam/count')
-#get('/api/actors/histogram/Amsterdam/countz')
+#get('/api/actors/2/Amsterdam')
+#get('/api/actors/2/Amsterdam/count')
+#get('/api/actors/2/Amsterdam/countz')

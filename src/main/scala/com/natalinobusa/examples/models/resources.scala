@@ -1,9 +1,5 @@
 package com.natalinobusa.examples.models
 
-object Resources {
-  case class Transaction(account: String, amount: Double, city: String)
-}
-
 import spray.httpx.Json4sJacksonSupport
 
 import org.json4s.Formats

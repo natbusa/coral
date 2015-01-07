@@ -13,6 +13,11 @@ def post(path, payload={}) :
     if (r.text):
         print json.dumps(json.loads(r.text), indent=2)
 
+def put(path, payload={}) :
+    r = requests.put(api+path, data=json.dumps(payload), headers=headers)
+    if (r.text):
+        print json.dumps(json.loads(r.text), indent=2)
+
 def get(path) :
     r = requests.get(api+path, headers=headers)
     if (r.text):
@@ -44,5 +49,9 @@ post('/api/actors', {"type":"rest"})
 post('/api/actors', {"type":"histogram", "by":"city"})
 post('/api/actors', {"type":"zscore","ac": "/user/coral/2","by": "city","field": "amount","score" : 2.0})
 
-post('/api/bonds',  {"producer":1,"consumer":2})
-post('/api/bonds',  {"producer":1,"consumer":3})
+#post('/api/bonds',  {"producer":1,"consumer":2})
+#post('/api/bonds',  {"producer":1,"consumer":3})
+
+put('/api/actors/1',  {"input":{"trigger":{"in":{"type":"external"}}}})
+put('/api/actors/2',  {"input":{"trigger":{"in":{"type":"actor", "source":1}}}})
+put('/api/actors/3',  {"input":{"trigger":{"in":{"type":"actor", "source":1}}}})

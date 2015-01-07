@@ -1,0 +1,28 @@
+
+coral actors can be configured via json
+
+ - parameters
+     // here you will find the parameters which are
+     // necessary to fully define the actor's function
+
+ - input
+     // here you will define which input ports are required
+     // by the actor to collect data and perform its function
+     // there are to type of inputs: trigger ports and collect ports
+     // as for now, actors can define just one trigger port,
+     // while collect ports can be more than one
+     - trigger
+          // default trigger port definition is "in"
+          // a trigger port can be internal or external
+          // if internal you must provide a reference to the emitting actor
+          // if external you can provide info such as auth and/or url
+          - in :
+            - type : [actor | external | none]
+            - source : id or url
+            - params :
+                - key : value
+
+     - collect
+       - <collect port name> : <actorid>
+         // the name of this port is further used in the actor to refer to the
+         // connected actor
