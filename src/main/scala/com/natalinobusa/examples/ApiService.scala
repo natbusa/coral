@@ -54,6 +54,9 @@ trait ApiService extends HttpService {
   def askActor(a: ActorSelection, msg: Any) = a.ask(msg)
 
   val serviceRoute = {
+    pathEndOrSingleSlash {
+      complete("api is running. enjoy")
+    } ~
     pathPrefix("api") {
       pathPrefix("actors") {
         pathEnd {
