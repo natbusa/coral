@@ -10,20 +10,18 @@ object Packaging {
   import com.typesafe.sbt.SbtNativePackager._
   import NativePackagerKeys._
 
-//  val packagingSettings = Seq(
-//    name := Settings.buildSettings.buildName,
-//    NativePackagerKeys.packageName := "asdf"
-//  ) ++ Seq(packageArchetype.java_application:_*) ++ buildSettings
+  val packagingSettings = Seq(
+    name := Settings.appName,
+    NativePackagerKeys.packageName := "natalinobusa"
+  ) ++ Seq(packageArchetype.java_application:_*) ++ buildSettings
 
-  val packagingSettings = Seq(packageArchetype.java_application:_*) ++ buildSettings
+ // val packagingSettings = Seq(packageArchetype.java_application:_*) ++ buildSettings
 }
 
 object TopLevelBuild extends Build {
 
-  val appName = "coral"
-
   lazy val root = Project (
-    id = appName,
+    id = Settings.appName,
     base = file ("."),
     settings = Settings.buildSettings ++
                Packaging.packagingSettings ++

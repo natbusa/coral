@@ -2,7 +2,9 @@ import sbt._
 import Keys._
 
 object Settings {
-  val buildOrganization = "http://natalinobusa.com"
+  val appName = "coral"
+
+  val buildOrganization = "com.natalinobusa"
   val buildVersion      = "1.0.0"
   val buildScalaVersion = "2.11.4"
 

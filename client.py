@@ -39,8 +39,8 @@ def randEvent() :
   event = {'account':'NL'+str(account), 'amount':amount, 'city':city }
   return event
 
-for i in range(1):
-#while(1):
+#for i in range(1):
+while(1):
   for i in range(10):
     post('/api/actors/1/in',randEvent() )
     time.sleep(0.01)
