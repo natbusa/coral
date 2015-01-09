@@ -34,7 +34,6 @@ class CoralActor extends Actor with ActorLogging {
   def actorRefFactory = context
 
   var actors = SortedMap.empty[Long, ActorPath]
-  var bonds  = SortedMap.empty[Long, Long]
   var count = 0L
 
   def receive = {
@@ -77,10 +76,10 @@ class CoralActor extends Actor with ActorLogging {
     //      log.info(s"streams get stream id $id, resource ${resource.toString} ")
     //      sender ! resource
     //
-        case  GetActorPath(id) =>
-          val path = actors.get(id)
-          log.info(s"streams get stream id $id, path ${path.toString} ")
-          sender ! path
+    case  GetActorPath(id) =>
+      val path = actors.get(id)
+      log.info(s"streams get stream id $id, path ${path.toString} ")
+      sender ! path
   }
 }
 
