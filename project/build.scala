@@ -8,27 +8,28 @@ import com.typesafe.sbt.SbtNativePackager.autoImport._
 
 object Packaging {
   import com.typesafe.sbt.SbtNativePackager._
-  import NativePackagerKeys._
 
   val packagingSettings = Seq(
     name := Settings.appName,
     NativePackagerKeys.packageName := "natalinobusa"
   ) ++ Seq(packageArchetype.java_application:_*) ++ buildSettings
 
- // val packagingSettings = Seq(packageArchetype.java_application:_*) ++ buildSettings
 }
 
 object TopLevelBuild extends Build {
 
-  lazy val root = Project (
-    id = Settings.appName,
-    base = file ("."),
+  lazy val root = (project in file(".")).
+    aggregate(runtime)
+
+  lazy val runtime = Project (
+    id = "runtime",
+    base = file ("runtime"),
     settings = Settings.buildSettings ++
-               Packaging.packagingSettings ++
-               Seq (
-                 resolvers ++= Resolvers.allResolvers, 
-                 libraryDependencies ++= Dependencies.allDependencies
-               )
+      Packaging.packagingSettings ++
+      Seq (
+        resolvers ++= Resolvers.allResolvers,
+        libraryDependencies ++= Dependencies.allDependencies
+      )
   ) dependsOn(macros)
 
   lazy val macros = Project(
