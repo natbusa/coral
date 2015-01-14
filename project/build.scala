@@ -18,14 +18,14 @@ object Packaging {
 
 object TopLevelBuild extends Build {
 
-  lazy val root = Project (
+  lazy val coral = Project (
     id = Settings.appName,
     base = file (".")
-  ).aggregate(runtime)
+  ).aggregate(runtimeApi, designWeb)
 
-  lazy val runtime = Project (
-    id = "runtime",
-    base = file ("runtime"),
+  lazy val runtimeApi = Project (
+    id = "runtime-api",
+    base = file ("runtime-api"),
     settings = Settings.buildSettings ++
       Packaging.packagingSettings ++
       Seq (
@@ -33,6 +33,17 @@ object TopLevelBuild extends Build {
         libraryDependencies ++= Dependencies.allDependencies
       )
   ) dependsOn(macros)
+
+  lazy val designWeb = Project (
+    id = "design-web",
+    base = file ("design-web"),
+    settings = Settings.buildSettings ++
+      Packaging.packagingSettings ++
+      Seq (
+        resolvers ++= Resolvers.allResolvers,
+        libraryDependencies ++= Dependencies.allDependencies
+      )
+  )
 
   lazy val macros = Project(
     id = "macros",

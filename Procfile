@@ -1,1 +1,1 @@
-web: runtime/target/universal/stage/bin/coral -DPORT=$PORT
+web: runtime-api/target/universal/stage/bin/coral -DPORT=$PORT
