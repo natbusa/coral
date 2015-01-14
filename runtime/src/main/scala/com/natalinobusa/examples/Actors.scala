@@ -165,7 +165,6 @@ trait CoralActor extends Actor with ActorLogging {
         case "actor"    =>
           val source = (json \ "input" \ "trigger" \ "in" \ "source").extractOpt[String]
           source map { v =>
-            log.warning(s"$v")
             tellActor(s"/user/coral/$v", RegisterActor(self))
           }
 
@@ -182,8 +181,6 @@ trait CoralActor extends Actor with ActorLogging {
         }
         case None => Map()
       }
-      log.warning(collect.toString())
-
 
       sender ! true
 
