@@ -29,7 +29,7 @@ import com.natalinobusa.examples.models.Messages._
 //// Static code generation
 import com.natalinobusa.macros.expose
 
-class CoralActor extends Actor with ActorLogging {
+class RuntimeActor extends Actor with ActorLogging {
 
   def actorRefFactory = context
 
@@ -84,7 +84,7 @@ class CoralActor extends Actor with ActorLogging {
 }
 
 // metrics actor example
-trait BeadActor extends Actor with ActorLogging {
+trait CoralActor extends Actor with ActorLogging {
 
   // begin: implicits and general actor init
   def actorRefFactory = context
@@ -92,7 +92,7 @@ trait BeadActor extends Actor with ActorLogging {
   // transmit actor list
   var recipients = SortedSet.empty[ActorRef]
   var trigger: Option[String] = None           // numeric id  or None or "external"
-  var collect = HashMap.empty[String, String]  // zero or more alias to id
+  var collect = Map.empty[String, String]  // zero or more alias to actorpath id
 
   implicit def executionContext = actorRefFactory.dispatcher
 
@@ -112,12 +112,17 @@ trait BeadActor extends Actor with ActorLogging {
   // update properties (for now just fix trigger and collect lists)
 
   // Future[Option[A]] to Option[Future, A] using the OptionT monad transformer
-  def getActorField[A](actorPath: String, field: String)(implicit mf: Manifest[A]) = {
-    val value = askActor(actorPath, GetField(field)).mapTo[JValue].map(json => (json \ field).extractOpt[A])
-    optionT(value)
+  def getCollectInputField[A](actorAlias: String, subpath:String, field: String)(implicit mf: Manifest[A]) = {
+    val result = collect.get(actorAlias) match {
+      case Some(actorPath) =>
+        val path = if (subpath == "") actorPath else s"$actorPath/$subpath"
+        askActor(path, GetField(field)).mapTo[JValue].map(json => (json \ field).extractOpt[A])
+      case None    => Future.failed(throw new Exception(s"Collect actor not defined"))
+    }
+    optionT(result)
   }
 
-  def getInputField[A](jsonValue: JValue)(implicit mf: Manifest[A]) = {
+  def getTriggerInputField[A](jsonValue: JValue)(implicit mf: Manifest[A]) = {
     val value = Future.successful(jsonValue.extractOpt[A])
     optionT(value)
   }
@@ -166,6 +171,20 @@ trait BeadActor extends Actor with ActorLogging {
 
         case _    =>
       }
+
+      // update collectlist
+      // ugliest code ever :( not my best day
+      val collectAliases = (json \ "input" \ "collect").extractOpt[Map[String,Any]]
+      collect = collectAliases match {
+        case Some(v) => {
+          val x = v.keySet.map(k => (k, (json \ "input" \ "collect" \ k \ "source").extractOpt[Int].map(v => s"/user/coral/$v")))
+          x.filter(_._2.isDefined).map(i => (i._1, i._2.get)).toMap
+        }
+        case None => Map()
+      }
+      log.warning(collect.toString())
+
+
       sender ! true
 
     case GetProperties =>
@@ -211,7 +230,7 @@ trait BeadActor extends Actor with ActorLogging {
 }
 
 //an actor with state
-class HistogramActor extends BeadActor {
+class HistogramActor extends CoralActor {
 
   // user defined state
   // todo: the given state should be persisted
@@ -235,7 +254,7 @@ class HistogramActor extends BeadActor {
     json: JObject =>
       for {
       // from trigger data
-        value <- getInputField[Double](json \ "amount")
+        value <- getTriggerInputField[Double](json \ "amount")
       } yield {
         // compute (local variables & update state)
         count match {
@@ -265,7 +284,7 @@ class HistogramActor extends BeadActor {
 }
 
 //todo: groupby actor should forward the bead methods to the children
-class GroupByActor[T <: Actor](by: String)(implicit m: ClassTag[T]) extends BeadActor with ActorLogging {
+class GroupByActor[T <: Actor](by: String)(implicit m: ClassTag[T]) extends CoralActor with ActorLogging {
 
   def stateModel = expose()
   def emit       = doNotEmit
@@ -274,7 +293,7 @@ class GroupByActor[T <: Actor](by: String)(implicit m: ClassTag[T]) extends Bead
     // todo: group_by support more than a level into dynamic actors tree
     json: JObject =>
       for {
-        value   <- getInputField[String](json \ by)
+        value   <- getTriggerInputField[String](json \ by)
       } yield {
         // create if it does not exist
         actorRefFactory.child(value) match
@@ -292,7 +311,7 @@ object GroupByActor {
     implicit val formats = org.json4s.DefaultFormats
     for {
     // from trigger data
-      by <- (json \ "by").extractOpt[String]
+      by <- (json \ "params" \ "by").extractOpt[String]
     } yield {
       apply[T](by)
     }// todo: take better care of exceptions and error handling
@@ -304,32 +323,31 @@ object RestActor {
 }
 
 // metrics actor example
-class RestActor extends BeadActor {
+class RestActor extends CoralActor {
   def stateModel = expose()
   def process    = noProcess
   def emit       = passThroughEmit
 }
 
 object ZscoreActor {
-  def apply(ac: String, by:String, field: String, score:Double): Props = Props(new ZscoreActor(ac,by,field, score))
+  def apply(by:String, field: String, score:Double): Props = Props(new ZscoreActor(by,field, score))
 
   //declare actors params via json
   def apply(json:JObject):Option[Props] = {
     implicit val formats = org.json4s.DefaultFormats
     for {
       // from trigger data
-        ac <- (json \ "ac").extractOpt[String]
-        by <- (json \ "by").extractOpt[String]
-        field <- (json \ "field").extractOpt[String]
-        score <- (json \ "score").extractOpt[Double]
+        by <- (json \ "params" \ "by").extractOpt[String]
+        field <- (json \ "params" \ "field").extractOpt[String]
+        score <- (json \ "params" \ "score").extractOpt[Double]
       } yield {
-        apply(ac, by, field, score)
+        apply(by, field, score)
       }// todo: take better care of exceptions and error handling
   }
 }
 
 // metrics actor example
-class ZscoreActor(ac: String, by:String, field: String, score:Double) extends BeadActor {
+class ZscoreActor(by:String, field: String, score:Double) extends CoralActor {
 
   var outlier: Boolean = false
 
@@ -339,12 +357,12 @@ class ZscoreActor(ac: String, by:String, field: String, score:Double) extends Be
     json: JObject =>
       for {
         // from trigger data
-        byValue <- getInputField[String](json \ by)
-        value <- getInputField[Double](json \ field)
+        subpath <- getTriggerInputField[String](json \ by)
+        value   <- getTriggerInputField[Double](json \ field)
 
         // from other actors
-        avg <- getActorField[Double](s"$ac/$byValue", "avg")
-        std <- getActorField[Double](s"$ac/$byValue", "sd")
+        avg     <- getCollectInputField[Double]( "histogram", subpath, "avg")
+        std     <- getCollectInputField[Double]( "histogram", subpath, "sd")
 
         //alternative syntax from other actors multiple fields
         //(avg,std) <- getActorField[Double](s"/user/events/histogram/$city", List("avg", "sd"))

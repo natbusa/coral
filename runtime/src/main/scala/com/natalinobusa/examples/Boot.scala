@@ -11,7 +11,7 @@ object Boot extends App {
   implicit val system = ActorSystem()
 
   // create the coral actor
-  val coral = system.actorOf(Props[CoralActor], "coral")
+  val coral = system.actorOf(Props[RuntimeActor], "coral")
 
   // create and start our service actor
   val service = system.actorOf(Props[ApiServiceActor], "api")

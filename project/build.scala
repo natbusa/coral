@@ -18,8 +18,10 @@ object Packaging {
 
 object TopLevelBuild extends Build {
 
-  lazy val root = (project in file(".")).
-    aggregate(runtime)
+  lazy val root = Project (
+    id = Settings.appName,
+    base = file (".")
+  ).aggregate(runtime)
 
   lazy val runtime = Project (
     id = "runtime",
