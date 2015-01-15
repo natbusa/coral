@@ -5,6 +5,7 @@ import sbt.Keys._
 import sbt._
 
 import com.typesafe.sbt.SbtNativePackager.autoImport._
+import spray.revolver.RevolverPlugin._
 
 object Packaging {
   import com.typesafe.sbt.SbtNativePackager._
@@ -28,6 +29,7 @@ object TopLevelBuild extends Build {
     base = file ("runtime-api"),
     settings = Settings.buildSettings ++
       Packaging.packagingSettings ++
+      Revolver.settings ++
       Seq (
         resolvers ++= Resolvers.allResolvers,
         libraryDependencies ++= Dependencies.allDependencies
@@ -39,6 +41,7 @@ object TopLevelBuild extends Build {
     base = file ("design-web"),
     settings = Settings.buildSettings ++
       Packaging.packagingSettings ++
+      Revolver.settings ++
       Seq (
         resolvers ++= Resolvers.allResolvers,
         libraryDependencies ++= Dependencies.allDependencies
