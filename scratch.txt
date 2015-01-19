@@ -26,3 +26,7 @@ coral actors can be configured via json
        - <collect port name> : <actorid>
          // the name of this port is further used in the actor to refer to the
          // connected actor
+
+ - type [rest | histogram | kafka | etc ...]
+ - group
+ - window
