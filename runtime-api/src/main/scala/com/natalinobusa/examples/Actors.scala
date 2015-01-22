@@ -105,7 +105,6 @@ trait CoralActor extends Actor with ActorLogging {
 
   implicit val futureMonad = new Monad[Future] {
     def point[A](a: => A): Future[A] = Future.successful(a)
-
     def bind[A, B](fa: Future[A])(f: A => Future[B]): Future[B] = fa flatMap f
   }
 
@@ -334,7 +333,7 @@ object ZscoreActor {
     implicit val formats = org.json4s.DefaultFormats
     for {
       // from trigger data
-        by <- (json \ "params" \ "by").extractOpt[String]
+        by    <- (json \ "params" \ "by").extractOpt[String]
         field <- (json \ "params" \ "field").extractOpt[String]
         score <- (json \ "params" \ "score").extractOpt[Double]
       } yield {

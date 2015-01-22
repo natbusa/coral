@@ -90,7 +90,7 @@ app.directive('jointDiagram', function () {
                  var a3 = new joint.shapes.devs.Model({
                      position: { x: 450, y: 50 },
                      size: { width: 90, height: 90 },
-                     inPorts: ['in','hist'],
+                     inPorts: ['in','collect'],
                      outPorts: ['out'],
                      attrs: {
                          '.label': { text: 'Model', 'ref-x': .4, 'ref-y': .2 },
@@ -106,7 +106,7 @@ app.directive('jointDiagram', function () {
 
                  connect(a1,'out',  a2, 'in');
                  connect(a1,'out',  a3, 'in');
-                 connect(a3,'hist', a2, 'state');
+                 connect(a3,'collect', a2, 'state');
              }
         };
         return directiveDefinitionObject;

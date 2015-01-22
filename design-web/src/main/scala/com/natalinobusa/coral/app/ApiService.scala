@@ -76,7 +76,7 @@ trait ApiService extends HttpService {
 
             // build the response
             respondWithHeader(Location(Uri(s"/api/$collectionName/$id"))) {
-              complete(StatusCodes.Created, "")
+              complete(StatusCodes.Created, value)
             }
           }
         } ~
@@ -140,7 +140,7 @@ trait ApiService extends HttpService {
 
   val apiRoute = {
     pathPrefix("api") {
-      apiCollectionRoute("flows")
+      apiCollectionRoute("tasks")
     }
   }
 
