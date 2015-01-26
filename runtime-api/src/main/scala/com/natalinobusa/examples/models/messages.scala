@@ -1,6 +1,6 @@
 package com.natalinobusa.examples.models
 
-import akka.actor.ActorRef
+import akka.actor.{ActorPath, ActorRef}
 import org.json4s.JObject
 
 object Messages {
@@ -23,6 +23,8 @@ object Messages {
 
   // create beads
   case class  CreateActor(json:JObject)
+  case class  RegisterActorPath(id:Long, path: ActorPath)
+  case object GetCount
   case object ListActors
 
   //Actors: internal routing and selection

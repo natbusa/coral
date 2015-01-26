@@ -26,8 +26,39 @@ import scala.reflect.{ClassTag, Manifest}
 // Inter-actor messaging
 import com.natalinobusa.examples.models.Messages._
 
-//// Static code generation
+// Static code generation
 import com.natalinobusa.macros.expose
+
+object CoralActorFactory {
+  def getProps(json:JValue) = {
+    // for now just post a zscore Actor
+    // todo: how about a factory? how about json to class?
+    // a bit ugly, but it will do for now
+    implicit val formats = org.json4s.DefaultFormats
+
+    // check for grouping, if so generate a group actor and move on ...
+    // otherwise, generate the proper actor
+    println(pretty(json))
+    val groupByProps = (json \ "group" \ "by").extractOpt[String] match {
+      case Some(x) => GroupByActor(json)
+      case None => None
+    }
+
+    println(groupByProps.toString)
+
+    val actorProps = for {
+      actorType <- (json \ "type").extractOpt[String]
+
+      props <- actorType match {
+        case "zscore" => ZscoreActor(json)
+        case "histogram" => HistogramActor(json)
+        case "rest" => RestActor(json)
+      }
+    } yield props
+
+    groupByProps orElse actorProps
+  }
+}
 
 class RuntimeActor extends Actor with ActorLogging {
 
@@ -38,22 +69,10 @@ class RuntimeActor extends Actor with ActorLogging {
 
   def receive = {
     case CreateActor(json) =>
+      val props  = CoralActorFactory.getProps(json)
 
-      // for now just post a zscoreActor
-      // todo: how about a factory? how about json to class?
-      // a bit ugly, but it will do for now
-      implicit val formats = org.json4s.DefaultFormats
-      val actorProps = for {
-        actorType <- (json \ "type").extractOpt[String]
-
-        props <- actorType match {
-          case "zscore"     => ZscoreActor(json)
-          case "histogram"  => GroupByActor[HistogramActor](json)
-          case "rest"       => RestActor(json)
-        }
-      } yield props
-
-    val actorId = actorProps map { p =>
+      val actorId = props map { p =>
+        log.warning(p.toString)
         count += 1
         val id = count
         val actor = actorRefFactory.actorOf(p, s"$id")
@@ -62,6 +81,13 @@ class RuntimeActor extends Actor with ActorLogging {
       }
 
       sender ! actorId
+
+    case RegisterActorPath(id, path) =>
+      actors += (id -> path)
+
+    case GetCount =>
+      count += 1
+      sender ! Some(count)
 
     case ListActors =>
           sender ! actors.keys.toList
@@ -89,10 +115,13 @@ trait CoralActor extends Actor with ActorLogging {
   // begin: implicits and general actor init
   def actorRefFactory = context
 
+  def jsonDef:JValue
+
   // transmit actor list
-  var recipients = SortedSet.empty[ActorRef]
-  var trigger: Option[String] = None           // numeric id  or None or "external"
-  var collect = Map.empty[String, String]  // zero or more alias to actorpath id
+  var emitTargets     = SortedSet.empty[ActorRef]
+  
+  var triggerSource:Option[String]  = None        // numeric id  or None or "external"
+  var collectSources = Map.empty[String, String]  // zero or more alias to actorpath id
 
   implicit def executionContext = actorRefFactory.dispatcher
 
@@ -112,7 +141,7 @@ trait CoralActor extends Actor with ActorLogging {
 
   // Future[Option[A]] to Option[Future, A] using the OptionT monad transformer
   def getCollectInputField[A](actorAlias: String, subpath:String, field: String)(implicit mf: Manifest[A]) = {
-    val result = collect.get(actorAlias) match {
+    val result = collectSources.get(actorAlias) match {
       case Some(actorPath) =>
         val path = if (subpath == "") actorPath else s"$actorPath/$subpath"
         askActor(path, GetField(field)).mapTo[JValue].map(json => (json \ field).extractOpt[A])
@@ -126,10 +155,15 @@ trait CoralActor extends Actor with ActorLogging {
     optionT(value)
   }
 
+  def getActorResponse[A](path: String, msg:Any) = {
+    val result = askActor(path, msg).mapTo[Option[A]]
+    optionT(result)
+  }
+
   // todo: ideas
   // can you fold this with become/unbecome and translate into a tell pattern rather the an ask pattern?
 
-  def process: JObject => OptionT[Future, Unit]
+  def trigger: JObject => OptionT[Future, Unit]
 
   def noProcess(json: JObject): OptionT[Future, Unit] = {
     OptionT.some(Future.successful({}))
@@ -142,14 +176,14 @@ trait CoralActor extends Actor with ActorLogging {
   def transmitAdmin: Receive = {
     case RegisterActor(r) =>
       log.warning(s"registering ${r.path.toString}")
-      recipients += r
+      emitTargets += r
   }
 
-  // narrocast the result of the emit function to the recipient list
+  // narrow cast the result of the emit function to the recipient list
   def transmit: JValue => Unit = {
      json => json match {
        case v:JObject =>
-         recipients map (actorRef => actorRef ! v)
+         emitTargets map (actorRef => actorRef ! v)
        case _ =>
      }
   }
@@ -157,8 +191,8 @@ trait CoralActor extends Actor with ActorLogging {
   def propertiesHandling: Receive = {
     case UpdateProperties(json) =>
       // update trigger
-      trigger = (json \ "input" \ "trigger" \ "in" \ "type").extractOpt[String]
-      trigger.getOrElse("none") match {
+      triggerSource = (json \ "input" \ "trigger" \ "in" \ "type").extractOpt[String]
+      triggerSource.getOrElse("none") match {
         case "none"     =>
         case "external" =>
         case "actor"    =>
@@ -173,7 +207,7 @@ trait CoralActor extends Actor with ActorLogging {
       // update collectlist
       // ugliest code ever :( not my best day
       val collectAliases = (json \ "input" \ "collect").extractOpt[Map[String,Any]]
-      collect = collectAliases match {
+      collectSources = collectAliases match {
         case Some(v) => {
           val x = v.keySet.map(k => (k, (json \ "input" \ "collect" \ k \ "source").extractOpt[Int].map(v => s"/user/coral/$v")))
           x.filter(_._2.isDefined).map(i => (i._1, i._2.get)).toMap
@@ -190,7 +224,7 @@ trait CoralActor extends Actor with ActorLogging {
   def jsonData: Receive = {
     // triggers (sensitivity list)
     case json: JObject =>
-      val stage = process(json)
+      val stage = trigger(json)
 
       // set the stage in motion ...
       val r = stage.run
@@ -206,12 +240,12 @@ trait CoralActor extends Actor with ActorLogging {
 
   }
 
-  def receive = jsonData orElse transmitAdmin orElse propertiesHandling orElse stateModel
+  def receive = jsonData orElse transmitAdmin orElse propertiesHandling orElse state
 
   // everything is json
   // everything is described via json schema
 
-  def stateModel:Receive
+  def state:Receive
 
   // todo: extend the macro for an empty expose list
   // e.g def stateModel = expose()
@@ -225,8 +259,31 @@ trait CoralActor extends Actor with ActorLogging {
   }
 }
 
+object HistogramActor {
+  implicit val formats = org.json4s.DefaultFormats
+
+  def getParams(json:JValue) = {
+    for {
+    // from trigger data
+      field <- (json \ "params" \ "field").extractOpt[String]
+    } yield {
+      field
+    }
+  }
+
+  def apply(json:JValue):Option[Props] = {
+    getParams(json).map(_ =>  Props(classOf[HistogramActor], json))
+    // todo: take better care of exceptions and error handling
+  }
+
+}
+
+
 //an actor with state
-class HistogramActor extends CoralActor {
+class HistogramActor(json: JObject) extends CoralActor {
+
+  def jsonDef = json
+  val field   = HistogramActor.getParams(json).get
 
   // user defined state
   // todo: the given state should be persisted
@@ -236,7 +293,7 @@ class HistogramActor extends CoralActor {
   var sd       = 0.0
   var `var`    = 0.0
 
-  def stateModel = expose(
+  def state = expose(
     ("count", "integer", count),
     ("avg",   "number",  avg),
     ("sd",    "number",  Math.sqrt(`var`) ),
@@ -246,11 +303,11 @@ class HistogramActor extends CoralActor {
   // private variables not exposed
   var avg_1    = 0.0
 
-  def process = {
+  def trigger = {
     json: JObject =>
       for {
       // from trigger data
-        value <- getTriggerInputField[Double](json \ "amount")
+        value <- getTriggerInputField[Double](json \ field)
       } yield {
         // compute (local variables & update state)
         count match {
@@ -279,77 +336,137 @@ class HistogramActor extends CoralActor {
   def emit = doNotEmit
 }
 
+object GroupByActor {
+  implicit val formats = org.json4s.DefaultFormats
+
+  def getParams(json:JValue) = {
+    for {
+      // from json actor definition
+      by <- (json \ "group" \ "by").extractOpt[String]
+    } yield {
+      by
+    }
+  }
+
+  def apply(json:JValue):Option[Props] = {
+    getParams(json).map(_ =>  Props(classOf[GroupByActor], json))
+    // todo: take better care of exceptions and error handling
+  }
+}
+
 //todo: groupby actor should forward the bead methods to the children
-class GroupByActor[T <: Actor](by: String)(implicit m: ClassTag[T]) extends CoralActor with ActorLogging {
+class GroupByActor(json:JObject) extends CoralActor with ActorLogging {
 
-  def stateModel = expose()
-  def emit       = doNotEmit
+  def jsonDef = json
+  val by = GroupByActor.getParams(json).get
 
-  def process = {
+  // remove the group section when defining children
+  val Diff(_,_,jsonChildrenDef) = jsonDef diff JObject(("group", (json \ "group")))
+
+  //keep the inverted map here?
+  //or up in the runtime ?
+  var actors = SortedMap.empty[String, Long]
+
+  def state = {
+    case GetField(field:String) =>
+      field match {
+        case "actors" => sender ! render(actors)
+        case _ => sender ! JNothing
+      }
+  }
+
+  def emit  = doNotEmit
+
+  def trigger = {
     // todo: group_by support more than a level into dynamic actors tree
     json: JObject =>
       for {
         value   <- getTriggerInputField[String](json \ by)
+        count   <- getActorResponse[Long]("/user/coral", GetCount)
       } yield {
         // create if it does not exist
         actorRefFactory.child(value) match
         {
           case Some(actorRef) => actorRef
-          case None           => actorRefFactory.actorOf(Props[T], value)
+          case None           => {
+            val props = CoralActorFactory.getProps(jsonChildrenDef)
+            val actorOpt = props map { p =>
+              val actor = actorRefFactory.actorOf(p, s"$value")
+              actors += (value -> count)
+              tellActor("/user/coral", RegisterActorPath(count, actor.path))
+              actor
+            }
+            // potential exception throwing here!
+            actorOpt.get
+          }
         }
       } ! json
   }
 }
 
-object GroupByActor {
-  def apply[T <: Actor](by: String)(implicit m: ClassTag[T]): Props = Props(new GroupByActor[T](by))
-  def apply[T <: Actor](json:JObject)(implicit m: ClassTag[T]):Option[Props] = {
-    implicit val formats = org.json4s.DefaultFormats
+object RestActor {
+  implicit val formats = org.json4s.DefaultFormats
+
+  def getParams(json:JValue) = {
     for {
-    // from trigger data
-      by <- (json \ "params" \ "by").extractOpt[String]
+      // from json actor definition
+      // possible parameters server/client, url, etc
+      t <- (json \ "type").extractOpt[String]
     } yield {
-      apply[T](by)
-    }// todo: take better care of exceptions and error handling
+      t
+    }
+  }
+
+  def apply(json:JValue):Option[Props] = {
+    getParams(json).map(_ =>  Props(classOf[RestActor], json))
+    // todo: take better care of exceptions and error handling
   }
 }
 
-object RestActor {
-  def apply(json:JObject) = Some(Props(new RestActor))
-}
 
 // metrics actor example
-class RestActor extends CoralActor {
-  def stateModel = expose()
-  def process    = noProcess
+class RestActor(json:JObject) extends CoralActor {
+
+  def jsonDef = json
+  val t   = RestActor.getParams(json).get
+
+  def state = expose()
+  def trigger    = noProcess
   def emit       = passThroughEmit
 }
 
 object ZscoreActor {
-  def apply(by:String, field: String, score:Double): Props = Props(new ZscoreActor(by,field, score))
+  implicit val formats = org.json4s.DefaultFormats
 
-  //declare actors params via json
-  def apply(json:JObject):Option[Props] = {
-    implicit val formats = org.json4s.DefaultFormats
+  def getParams(json:JValue) = {
     for {
-      // from trigger data
-        by    <- (json \ "params" \ "by").extractOpt[String]
-        field <- (json \ "params" \ "field").extractOpt[String]
-        score <- (json \ "params" \ "score").extractOpt[Double]
-      } yield {
-        apply(by, field, score)
-      }// todo: take better care of exceptions and error handling
+    // from json actor definition
+    // possible parameters server/client, url, etc
+      by    <- (json \ "params" \ "by").extractOpt[String]
+      field <- (json \ "params" \ "field").extractOpt[String]
+      score <- (json \ "params" \ "score").extractOpt[Double]
+    } yield {
+      (by, field, score)
+    }
   }
+
+  def apply(json:JValue):Option[Props] = {
+    getParams(json).map(_ =>  Props(classOf[ZscoreActor], json))
+    // todo: take better care of exceptions and error handling
+  }
+
 }
 
 // metrics actor example
-class ZscoreActor(by:String, field: String, score:Double) extends CoralActor {
+class ZscoreActor(json:JObject) extends CoralActor {
+
+  def jsonDef = json
+  val (by, field, score) = ZscoreActor.getParams(jsonDef).get
 
   var outlier: Boolean = false
+  def state = expose( ("outlier", "integer", outlier) )
 
-  def stateModel = expose( ("outlier", "integer", outlier) )
-
-  def process = {
+  def trigger = {
     json: JObject =>
       for {
         // from trigger data

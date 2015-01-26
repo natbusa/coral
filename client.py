@@ -28,6 +28,7 @@ def delete(path) :
 generator = {
   "Amsterdam": {'mu':100, 'sigma':20},
   "Rotterdam": {'mu':20,  'sigma':20},
+  "DenHaag":  {'mu':500,  'sigma':60},
   "Utrecht":   {'mu':40,  'sigma':20},
   "Eindhoven": {'mu':100, 'sigma':10},
   "Arnhem":    {'mu':200, 'sigma':50}
