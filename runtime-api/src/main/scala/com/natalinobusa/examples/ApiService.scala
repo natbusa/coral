@@ -100,34 +100,13 @@ trait ApiService extends HttpService {
                   } ~
                   get {
                     import JsonConversions._
-                    val result = askActor(ap,GetProperties).mapTo[JObject]
+                    val result = askActor(ap,Get).mapTo[JObject]
                     onComplete(result) {
                       case Success(json) => complete(json)
                       case Failure(ex)   => complete(StatusCodes.InternalServerError, s"An error occurred: ${ex.getMessage}")
                     }
                   }
                 } ~
-                  pathPrefix("schema" ) {
-                    get {
-                      import JsonConversions._
-                      val result = askActor(ap,ListFields).mapTo[JObject]
-                      onComplete(result) {
-                        case Success(json) => complete(json)
-                        case Failure(ex)   => complete(StatusCodes.InternalServerError, s"An error occurred: ${ex.getMessage}")
-                      }
-                    }
-                  } ~
-                  pathPrefix("state" / Segment ) {
-                    field =>
-                      get {
-                        import JsonConversions._
-                        val result = askActor(ap,GetField(field)).mapTo[JValue]
-                        onComplete(result) {
-                          case Success(json) => complete(json)
-                          case Failure(ex)   => complete(StatusCodes.InternalServerError, s"An error occurred: ${ex.getMessage}")
-                        }
-                      }
-                  } ~
                   // "in" should be exposed only as part of the input rest interface bead
                   // this should be moved to the actor itself, by passing the ctx around
                   // todo: create a REST bead and allow ctx to be passed there to continue processing

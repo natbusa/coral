@@ -188,25 +188,26 @@ trait CoralActor extends Actor with ActorLogging {
      }
   }
 
+  // this become link
   def propertiesHandling: Receive = {
     case UpdateProperties(json) =>
       // update trigger
       triggerSource = (json \ "input" \ "trigger" \ "in" \ "type").extractOpt[String]
       triggerSource.getOrElse("none") match {
-        case "none"     =>
+        case "none" =>
         case "external" =>
-        case "actor"    =>
+        case "actor" =>
           val source = (json \ "input" \ "trigger" \ "in" \ "source").extractOpt[String]
           source map { v =>
             tellActor(s"/user/coral/$v", RegisterActor(self))
           }
 
-        case _    =>
+        case _ =>
       }
 
       // update collectlist
       // ugliest code ever :( not my best day
-      val collectAliases = (json \ "input" \ "collect").extractOpt[Map[String,Any]]
+      val collectAliases = (json \ "input" \ "collect").extractOpt[Map[String, Any]]
       collectSources = collectAliases match {
         case Some(v) => {
           val x = v.keySet.map(k => (k, (json \ "input" \ "collect" \ k \ "source").extractOpt[Int].map(v => s"/user/coral/$v")))
@@ -216,9 +217,11 @@ trait CoralActor extends Actor with ActorLogging {
       }
 
       sender ! true
+  }
 
-    case GetProperties =>
-      sender ! JNothing
+  def resourceDesc: Receive = {
+    case Get =>
+      sender ! render( ("actors", render(Map(("def", jsonDef), ("state", render(state))))) )
   }
 
   def jsonData: Receive = {
@@ -240,23 +243,19 @@ trait CoralActor extends Actor with ActorLogging {
 
   }
 
-  def receive = jsonData orElse transmitAdmin orElse propertiesHandling orElse state
+  def receive = jsonData orElse stateReceive orElse transmitAdmin orElse propertiesHandling orElse resourceDesc
 
-  // everything is json
-  // everything is described via json schema
+  // state is a map
 
-  def state:Receive
+  def state:Map[String, JValue]
 
-  // todo: extend the macro for an empty expose list
-  // e.g def stateModel = expose()
-  val emptyJsonSchema = parse("""{"title":"json schema", "type":"object"}""")
-  def notExposed:Receive = {
-    case ListFields =>
-      sender ! emptyJsonSchema
-
-    case GetField(_) =>
-      sender ! JNothing
+  def stateReceive:Receive = {
+    case GetField(x) => {
+      val value = state.get(x)
+      sender ! render(state)
+    }
   }
+
 }
 
 object HistogramActor {
@@ -293,11 +292,11 @@ class HistogramActor(json: JObject) extends CoralActor {
   var sd       = 0.0
   var `var`    = 0.0
 
-  def state = expose(
-    ("count", "integer", count),
-    ("avg",   "number",  avg),
-    ("sd",    "number",  Math.sqrt(`var`) ),
-    ("var",   "number",  `var`)
+  def state = Map(
+    ("count", render(count)),
+    ("avg",   render(avg)),
+    ("sd",    render(Math.sqrt(`var`)) ),
+    ("var",   render(`var`))
   )
 
   // private variables not exposed
@@ -367,13 +366,7 @@ class GroupByActor(json:JObject) extends CoralActor with ActorLogging {
   //or up in the runtime ?
   var actors = SortedMap.empty[String, Long]
 
-  def state = {
-    case GetField(field:String) =>
-      field match {
-        case "actors" => sender ! render(actors)
-        case _ => sender ! JNothing
-      }
-  }
+  def state = Map( ("actors", render(actors) ) )
 
   def emit  = doNotEmit
 
@@ -428,9 +421,8 @@ object RestActor {
 class RestActor(json:JObject) extends CoralActor {
 
   def jsonDef = json
-  val t   = RestActor.getParams(json).get
 
-  def state = expose()
+  def state = Map.empty
   def trigger    = noProcess
   def emit       = passThroughEmit
 }
@@ -464,7 +456,7 @@ class ZscoreActor(json:JObject) extends CoralActor {
   val (by, field, score) = ZscoreActor.getParams(jsonDef).get
 
   var outlier: Boolean = false
-  def state = expose( ("outlier", "integer", outlier) )
+  def state = Map.empty
 
   def trigger = {
     json: JObject =>
